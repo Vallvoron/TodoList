@@ -52,12 +52,16 @@ public class TodoListController {
     }
 
     @PostMapping
-    public ResponseEntity<Task> createTask(@Valid @RequestBody TaskRequest request) {
+    public ResponseEntity<?> createTask(@Valid @RequestBody TaskRequest request) {
         Task task = new Task();
         task.setStatus(request.getStatus());
         task.setTitle(request.getTitle());
         task.setDescription(request.getDescription());
         processTitle(task);
+        if(task.getDeadline()!=null && task.getDeadline().isBefore(LocalDate.now())){
+            return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("message", "Дэдлайн не может быть раньше настоящего времени"));
+        }
         updateTaskStatus(task);
         Task savedTask = taskRepository.save(task);
         return new ResponseEntity<>(savedTask, HttpStatus.CREATED);
@@ -77,6 +81,10 @@ public class TodoListController {
         existingTask.setUpdatedAt(LocalDateTime.now());
 
         processTitle(existingTask);
+        if(existingTask.getDeadline()!=null && existingTask.getDeadline().isBefore(LocalDate.now())){
+            return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("message", "Дэдлайн не может быть раньше настоящего времени"));
+        }
         updateTaskStatus(existingTask);
         Task updatedTask = taskRepository.save(existingTask);
 
