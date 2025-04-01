@@ -91,7 +91,7 @@ public class TodoListController {
         return ResponseEntity.ok(updatedTask);
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping
     public ResponseEntity<?> deleteTask(@RequestParam UUID id) {
         Optional<Task> optTask = taskRepository.findById(id);
         if(optTask.isEmpty()){
