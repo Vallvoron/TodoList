@@ -67,7 +67,7 @@ public class TodoListController {
         return new ResponseEntity<>(savedTask, HttpStatus.CREATED);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping
     public ResponseEntity<?> updateTask(@RequestParam UUID id, @Valid @RequestBody TaskRequest taskDetails) {
         Optional<Task> optTask = taskRepository.findById(id);
         if(optTask.isEmpty()){
