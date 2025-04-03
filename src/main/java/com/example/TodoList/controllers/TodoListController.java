@@ -53,6 +53,10 @@ public class TodoListController {
 
     @PostMapping
     public ResponseEntity<?> createTask(@Valid @RequestBody TaskRequest request) {
+        if(request.getTitle().length()<4) {
+            return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("message", "Имя не может быть меньше 4 символов"));
+        }
         Task task = new Task();
         task.setStatus(request.getStatus());
         task.setTitle(request.getTitle());
