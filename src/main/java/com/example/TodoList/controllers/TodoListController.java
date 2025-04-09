@@ -5,6 +5,7 @@ import com.example.TodoList.models.*;
 import com.example.TodoList.repositories.TaskRepository;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -14,10 +15,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,8 +31,10 @@ public class TodoListController {
     }
 
     @GetMapping
-    public ResponseEntity<?> getAllTasks() {
-        List<Task> taskList= taskRepository.findAll();
+    public ResponseEntity<?> getAllTasks(@RequestParam(defaultValue = "createdAt") String sortBy,
+                                         @RequestParam(defaultValue = "ASC") Sort.Direction sortDirection) {
+        Sort sort = Sort.by(sortDirection, sortBy);
+        List<Task> taskList= taskRepository.findAll(sort);
         return ResponseEntity.ok().body(taskList);
     }
 
@@ -53,15 +53,21 @@ public class TodoListController {
 
     @PostMapping
     public ResponseEntity<?> createTask(@Valid @RequestBody TaskRequest request) {
-        if(request.getTitle().length()<4) {
-            return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of("message", "Имя не может быть меньше 4 символов"));
-        }
         Task task = new Task();
         task.setStatus(request.getStatus());
         task.setTitle(request.getTitle());
         task.setDescription(request.getDescription());
         processTitle(task);
+        if(request.getPriority()!=null){
+            task.setPriority(request.getPriority());
+        }
+        if(request.getDeadline()!=null){
+            task.setDeadline(request.getDeadline());
+        }
+        if(task.getTitle().length()<4) {
+            return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("message", "Имя не может быть меньше 4 символов"));
+        }
         if(task.getDeadline()!=null && task.getDeadline().isBefore(LocalDate.now())){
             return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of("message", "Дэдлайн не может быть раньше настоящего времени"));
@@ -85,6 +91,20 @@ public class TodoListController {
         existingTask.setUpdatedAt(LocalDateTime.now());
 
         processTitle(existingTask);
+        if(taskDetails.getPriority()!=null){
+            existingTask.setPriority(taskDetails.getPriority());
+        }
+        if(taskDetails.getDeadline()!=null){
+            existingTask.setDeadline(taskDetails.getDeadline());
+        }
+        if(existingTask.getTitle().length()<4) {
+            return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("message", "Имя не может быть меньше 4 символов"));
+        }
+        if(existingTask.getDeadline()!=null && existingTask.getDeadline().isBefore(LocalDate.now())){
+            return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("message", "Дэдлайн не может быть раньше настоящего времени"));
+        }
         if(existingTask.getDeadline()!=null && existingTask.getDeadline().isBefore(LocalDate.now())){
             return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of("message", "Дэдлайн не может быть раньше настоящего времени"));
@@ -119,7 +139,6 @@ public class TodoListController {
         }
 
         task.setTitle(task.getTitle().replaceAll("!1|!2|!3|!4", "").trim());
-
         Pattern pattern = Pattern.compile("!before\\s+(\\d{2}[.-]\\d{2}[.-]\\d{4})");
         Matcher matcher = pattern.matcher(task.getTitle());
         if (matcher.find()) {

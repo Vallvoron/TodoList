@@ -29,7 +29,6 @@ public class Task {
     private UUID id;
 
     @NotBlank(message = "Название не может быть пустым")
-    @Size(min = 4, message = "Название должно содержать минимум 4 символа")
     private String title;
 
     private String description;
