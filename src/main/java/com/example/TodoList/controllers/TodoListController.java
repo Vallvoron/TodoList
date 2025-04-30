@@ -30,6 +30,7 @@ public class TodoListController {
         this.taskRepository = taskRepository;
     }
 
+
     @GetMapping
     public ResponseEntity<?> getAllTasks(@RequestParam(defaultValue = "createdAt") String sortBy,
                                          @RequestParam(defaultValue = "ASC") Sort.Direction sortDirection) {
@@ -101,14 +102,10 @@ public class TodoListController {
             return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of("message", "Имя не может быть меньше 4 символов"));
         }
-        if(existingTask.getDeadline()!=null && existingTask.getDeadline().isBefore(LocalDate.now())){
+        /*if(existingTask.getDeadline()!=null && existingTask.getDeadline().isBefore(LocalDate.now())){
             return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of("message", "Дэдлайн не может быть раньше настоящего времени"));
-        }
-        if(existingTask.getDeadline()!=null && existingTask.getDeadline().isBefore(LocalDate.now())){
-            return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of("message", "Дэдлайн не может быть раньше настоящего времени"));
-        }
+        }*/
         updateTaskStatus(existingTask);
         Task updatedTask = taskRepository.save(existingTask);
 

@@ -23,7 +23,7 @@ public class TaskRequest {
 
     @Schema(description = "Приоритет", example = "LOW")
     @Enumerated(EnumType.STRING)
-    public Priority priority=Priority.MEDIUM;
+    public Priority priority;
 
     @Schema(description = "Дэдлайн", example = "11.11.2111")
     public LocalDate deadline;
