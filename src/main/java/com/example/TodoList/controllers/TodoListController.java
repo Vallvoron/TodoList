@@ -40,7 +40,7 @@ public class TodoListController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getTaskById(@RequestParam UUID id) {
+    public ResponseEntity<?> getTaskById(@PathVariable UUID id) {
         Optional<Task> optTask = taskRepository.findById(id);
         if(optTask.isEmpty()){
             return ResponseEntity.status(404).contentType(MediaType.APPLICATION_JSON)
@@ -124,7 +124,7 @@ public class TodoListController {
                 .body(Map.of("message", "Задача удалена"));
     }
 
-    private void processTitle(Task task) {
+    public void processTitle(Task task) {
         if (task.getTitle().contains("!1")) {
             task.setPriority(Priority.CRITICAL);
         } else if (task.getTitle().contains("!2")) {
@@ -157,7 +157,7 @@ public class TodoListController {
         task.setTitle(task.getTitle().replaceAll(pattern.pattern(), "").trim());
     }
 
-    private void updateTaskStatus(Task task) {
+    public void updateTaskStatus(Task task) {
         if (task.getDeadline() != null) {
             LocalDate today = LocalDate.now();
             if (task.getStatus() == Status.COMPLETED) {
