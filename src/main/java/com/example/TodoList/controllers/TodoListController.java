@@ -69,6 +69,10 @@ public class TodoListController {
             return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of("message", "Имя не может быть меньше 4 символов"));
         }
+        if(task.getTitle().length()>255) {
+            return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("message", "Имя не может быть больше 255 символов"));
+        }
         if(task.getDeadline()!=null && task.getDeadline().isBefore(LocalDate.now())){
             return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of("message", "Дэдлайн не может быть раньше настоящего времени"));

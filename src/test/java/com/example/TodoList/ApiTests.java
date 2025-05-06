@@ -8,6 +8,8 @@ import com.example.TodoList.repositories.TaskRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,8 +20,8 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -87,7 +89,7 @@ class ApiTests {
 	}
 
 	@Test
-	void create_TitleTooLong() throws Exception {//и длиннее чем должно быть(из за SQL запроса тест не проводится)
+	void create_TitleTooLong() throws Exception {//и длиннее чем должно быть
 		String longTitle = "A".repeat(256);
 		String requestBody = String.format("{\"title\":\"%s\",\"description\":\"New Description\",\"status\":\"ACTIVE\"}", longTitle);
 
@@ -96,11 +98,10 @@ class ApiTests {
 						.content(requestBody))
 				.andReturn();
 
-		int status = result.getResponse().getStatus();
-		assertTrue(status == 500 || status == 400, "Expected status code 500 or 400, but got " + status);
-
+		assertEquals(400, result.getResponse().getStatus());
+		assertEquals(MediaType.APPLICATION_JSON_VALUE, result.getResponse().getContentType());
 		String content = result.getResponse().getContentAsString();
-		assertTrue(content.contains("TITLE CHARACTER VARYING(255)") || content.contains("Data truncation") || content.contains("constraint violation") || content.contains("Имя не может быть больше 255 символов"), "Content was: " + content);
+		assertTrue(content.contains("Имя не может быть больше 255 символов"));
 	}
 
 	@Test
@@ -183,187 +184,99 @@ class ApiTests {
 				.andExpect(status().isCreated());
 	}
 
-	@Test
-	void create_StatusInvalid() throws Exception {//проверки возможных значений для статусов(неправильная не пройдет)
+	//создание со статусом
+	@ParameterizedTest
+	@ValueSource(strings = {
+			"ACTIVE,201",
+			"COMPLETED,201",
+			"INVALID_STATUS,400"
+	})
+	void create_StatusValidation(String testData) throws Exception {
+		// Arrange
+		String[] data = testData.split(",");
+		String statusValue = data[0];
+		int expectedStatus = Integer.parseInt(data[1]);
+
 		String requestBody = objectMapper.writeValueAsString(
 				Map.of("title", "Valid Title",
 						"description", "Valid Description",
-						"status", "INVALID_STATUS")
+						"status", statusValue)
 		);
 
+		// Act & Assert
 		mockMvc.perform(post("/api/tasks")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody))
-				.andExpect(status().isBadRequest());
+				.andExpect(status().is(expectedStatus));
 	}
 
-	@Test
-	void create_ValidStatus() throws Exception {
-		String requestBody = objectMapper.writeValueAsString(
-				Map.of("title", "Valid Title",
-						"description", "Valid Description",
-						"status", "ACTIVE")
-		);
+	//проверка значений приоритета
+	@ParameterizedTest
+	@ValueSource(strings = {
+			"CRITICAL,201",
+			"HIGH,201",
+			"MEDIUM,201",
+			"LOW,201",
+			"null,201",
+			"INVALID_PRIORITY,400"
+	})
+	void create_PriorityValidation(String testData) throws Exception {
+		String[] data = testData.split(",");
+		String priorityValue = data[0];
+		int expectedStatus = Integer.parseInt(data[1]);
 
-		mockMvc.perform(post("/api/tasks")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestBody))
-				.andExpect(status().isCreated());
-	}
-
-	@Test
-	void create_PriorityInvalid() throws Exception {//и то же самое для приоритета
-		String requestBody = objectMapper.writeValueAsString(
-				Map.of("title", "Valid Title",
-						"description", "Valid Description",
-						"status", "ACTIVE",
-						"priority", "INVALID_PRIORITY")
-		);
-
-		mockMvc.perform(post("/api/tasks")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestBody))
-				.andExpect(status().isBadRequest());
-	}
-
-	@Test
-	void create_ValidPriority() throws Exception {
-		String requestBody = objectMapper.writeValueAsString(
-				Map.of("title", "Valid Title",
-						"description", "Valid Description",
-						"status", "ACTIVE",
-						"priority", "HIGH")
-		);
-
-		mockMvc.perform(post("/api/tasks")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestBody))
-				.andExpect(status().isCreated())
-				.andReturn();
-	}
-
-	@Test
-	void create_NullPriority() throws Exception {
 		Map<String, Object> requestBody = new HashMap<>();
 		requestBody.put("title", "Valid Title");
 		requestBody.put("description", "Valid Description");
 		requestBody.put("status", "ACTIVE");
-		requestBody.put("priority", null);
 
+		if (!priorityValue.equals("null")) {
+			requestBody.put("priority", priorityValue);
+		} else {
+			requestBody.put("priority", null);
+		}
+
+		String requestBodyJson = objectMapper.writeValueAsString(requestBody);
 		mockMvc.perform(post("/api/tasks")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestBody.toString()))
-				.andExpect(status().isBadRequest());
+						.content(requestBodyJson))
+				.andExpect(status().is(expectedStatus));
 	}
 
-	//проверки правильной установки макросов(пока возможные значения)
-	@Test
-	void create_CriticalPriorityFromMacro() throws Exception {
-		String title = "Task with !1 priority";
-		String requestBody = objectMapper.writeValueAsString(
-				Map.of("title", title,
-						"description", "Та самая",
-						"status", "ACTIVE")
-		);
+	//проверки правильной и неправильной установки макросов
 
-		mockMvc.perform(MockMvcRequestBuilders.post("/api/tasks")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestBody))
-				.andExpect(MockMvcResultMatchers.status().isCreated());
+	@ParameterizedTest
+	@ValueSource(strings = {
+			"Task with !1 priority,CRITICAL",
+			"Task with !2 priority,HIGH",
+			"Task with !3 priority,MEDIUM",
+			"Task with !4 priority,LOW",
+			"Task with !5 priority,MEDIUM"
+	})
+	void create_PriorityFromMacro(String testData) throws Exception {
+		// Arrange
+		String[] data = testData.split(",");
+		String title = data[0];
+		Priority expectedPriority = Priority.valueOf(data[1]);
 
-		List<Task> tasks = taskRepository.findAll();
-		System.out.println("Tasks in database: ");
-		for (Task task : tasks) {
-			System.out.println("  Title: " + task.getTitle() + ", Priority: " + task.getPriority()  + ", Status: " + task.getStatus()  + ", Deadline: " + task.getDeadline()  + ", Description: " + task.getDescription());
-		}
-		Task createdTask = tasks.stream()
-				.filter(task -> task.getTitle().equals("Task with  priority"))
-				.findFirst()
-				.orElse(null);
-		assertNotNull(createdTask);
-		assertEquals(Priority.CRITICAL, createdTask.getPriority());
-	}
-
-
-	@Test
-	void create_HighPriorityFromMacro() throws Exception {
-		String title = "Task with !2 priority";
 		String requestBody = objectMapper.writeValueAsString(
 				Map.of("title", title,
 						"description", "Valid Description",
 						"status", "ACTIVE")
 		);
 
-		mockMvc.perform(MockMvcRequestBuilders.post("/api/tasks")
+		MvcResult result = mockMvc.perform(post("/api/tasks")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody))
-				.andExpect(MockMvcResultMatchers.status().isCreated());
+				.andExpect(status().isCreated())
+				.andExpect(MockMvcResultMatchers.jsonPath("$.id").exists())
+				.andReturn();
 
-		List<Task> tasks = taskRepository.findAll();
-		System.out.println("Tasks in database: ");
-		for (Task task : tasks) {
-			System.out.println("  Title: " + task.getTitle() + ", Priority: " + task.getPriority()  + ", Status: " + task.getStatus()  + ", Deadline: " + task.getDeadline()  + ", Description: " + task.getDescription());
-		}
-		Task createdTask = tasks.stream()
-				.filter(task -> task.getTitle().equals("Task with  priority"))
-				.findFirst()
-				.orElse(null);
+		String responseBody = result.getResponse().getContentAsString();
+		Task createdTask = objectMapper.readValue(responseBody, Task.class);
+
 		assertNotNull(createdTask);
-		assertEquals(Priority.HIGH, createdTask.getPriority());
-	}
-
-	@Test
-	void create_MediumPriorityFromMacro() throws Exception {
-		String title = "Task with !3 priority";
-		String requestBody = objectMapper.writeValueAsString(
-				Map.of("title", title,
-						"description", "Valid Description",
-						"status", "ACTIVE")
-		);
-
-		mockMvc.perform(MockMvcRequestBuilders.post("/api/tasks")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestBody))
-				.andExpect(MockMvcResultMatchers.status().isCreated());
-
-		List<Task> tasks = taskRepository.findAll();
-		System.out.println("Tasks in database: ");
-		for (Task task : tasks) {
-			System.out.println("  Title: " + task.getTitle() + ", Priority: " + task.getPriority()  + ", Status: " + task.getStatus()  + ", Deadline: " + task.getDeadline()  + ", Description: " + task.getDescription());
-		}
-		Task createdTask = tasks.stream()
-				.filter(task -> task.getTitle().equals("Task with  priority"))
-				.findFirst()
-				.orElse(null);
-		assertNotNull(createdTask);
-		assertEquals(Priority.MEDIUM, createdTask.getPriority());
-	}
-
-	@Test
-	void create_LowPriorityFromMacro() throws Exception {
-		String title = "Task with !4 priority";
-		String requestBody = objectMapper.writeValueAsString(
-				Map.of("title", title,
-						"description", "Valid Description",
-						"status", "ACTIVE")
-		);
-
-		mockMvc.perform(MockMvcRequestBuilders.post("/api/tasks")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestBody))
-				.andExpect(MockMvcResultMatchers.status().isCreated());
-
-		List<Task> tasks = taskRepository.findAll();
-		System.out.println("Tasks in database: ");
-		for (Task task : tasks) {
-			System.out.println("  Title: " + task.getTitle() + ", Priority: " + task.getPriority()  + ", Status: " + task.getStatus()  + ", Deadline: " + task.getDeadline()  + ", Description: " + task.getDescription());
-		}
-		Task createdTask = tasks.stream()
-				.filter(task -> task.getTitle().equals("Task with  priority"))
-				.findFirst()
-				.orElse(null);
-		assertNotNull(createdTask);
-		assertEquals(Priority.LOW, createdTask.getPriority());
+		assertEquals(expectedPriority, createdTask.getPriority());
 	}
 
 	//проверка приоритета поля над макросом
@@ -377,83 +290,61 @@ class ApiTests {
 						"priority", "HIGH")
 		);
 
-		mockMvc.perform(MockMvcRequestBuilders.post("/api/tasks")
+		MvcResult result = mockMvc.perform(MockMvcRequestBuilders.post("/api/tasks")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody))
-				.andExpect(MockMvcResultMatchers.status().isCreated());
+				.andExpect(MockMvcResultMatchers.status().isCreated())
+				.andReturn();
 
-		List<Task> tasks = taskRepository.findAll();
-		System.out.println("Tasks in database: ");
-		for (Task task : tasks) {
-			System.out.println("  Title: " + task.getTitle() + ", Priority: " + task.getPriority()  + ", Status: " + task.getStatus()  + ", Deadline: " + task.getDeadline()  + ", Description: " + task.getDescription());
-		}
-		Task createdTask = tasks.stream()
-				.filter(task -> task.getTitle().equals("Task with  priority"))
-				.findFirst()
-				.orElse(null);
+		String responseBody = result.getResponse().getContentAsString();
+		Task createdTask = objectMapper.readValue(responseBody, Task.class);
 		assertNotNull(createdTask);
 		assertEquals(Priority.HIGH, createdTask.getPriority());
 	}
 
 	//правильные и неправильные форматы дедлайна
-	@Test
-	void create_DeadlineFromMacroWithDots() throws Exception {
-		String title = "Task !before 16.10.2026 deadline";
-		String requestBody = objectMapper.writeValueAsString(
-				Map.of("title", title,
-						"description", "Valid Description",
-						"status", "ACTIVE")
+	@ParameterizedTest
+	@ValueSource(strings = {
+			"Task !before 16.10.2026 deadline,2026-10-16",
+			"Task !before 16-10-2026 deadline,2026-10-16",
+			"Task !before 32.02.2027 deadline,null",
+			"Task !before 29.02.2027 deadline,2027-02-28",
+			"Task !before 16/10/2025 deadline,null"
+	})
+	void create_DeadlineFromMacro(String testData) throws Exception {
+		// Arrange
+		String[] data = testData.split(",");
+		String title = data[0];
+		String expectedDate = data[1];
+
+		Map<String, Object> requestBody = Map.of(
+				"title", title,
+				"description", "Valid Description",
+				"status", "ACTIVE"
 		);
 
-		mockMvc.perform(MockMvcRequestBuilders.post("/api/tasks")
+		MvcResult result = mockMvc.perform(post("/api/tasks")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestBody))
-				.andExpect(MockMvcResultMatchers.status().isCreated());
+						.content(objectMapper.writeValueAsString(requestBody)))
+				.andExpect(status().isCreated())
+				.andReturn();
 
-		List<Task> tasks = taskRepository.findAll();
-		System.out.println("Tasks in database: ");
-		for (Task task : tasks) {
-			System.out.println("  Title: " + task.getTitle() + ", Priority: " + task.getPriority()  + ", Status: " + task.getStatus()  + ", Deadline: " + task.getDeadline()  + ", Description: " + task.getDescription());
-		}
-		Task createdTask = tasks.stream()
-				.filter(task -> task.getTitle().equals("Task  deadline"))
-				.findFirst()
-				.orElse(null);
+		String responseBody = result.getResponse().getContentAsString();
+		Task createdTask = objectMapper.readValue(responseBody, Task.class);
+
 		assertNotNull(createdTask);
-		assertEquals(LocalDate.of(2026, 10, 16), createdTask.getDeadline());
-	}
 
-	@Test
-	void create_DeadlineFromMacroWithDashes() throws Exception {
-		String title = "Task !before 16-10-2026 deadline";
-		String requestBody = objectMapper.writeValueAsString(
-				Map.of("title", title,
-						"description", "Valid Description",
-						"status", "ACTIVE")
-		);
-
-		mockMvc.perform(MockMvcRequestBuilders.post("/api/tasks")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestBody))
-				.andExpect(MockMvcResultMatchers.status().isCreated());
-
-		List<Task> tasks = taskRepository.findAll();
-		System.out.println("Tasks in database: ");
-		for (Task task : tasks) {
-			System.out.println("  Title: " + task.getTitle() + ", Priority: " + task.getPriority()  + ", Status: " + task.getStatus()  + ", Deadline: " + task.getDeadline()  + ", Description: " + task.getDescription());
+		if (expectedDate != null && !expectedDate.equals("null")) {
+			assertEquals(LocalDate.parse(expectedDate), createdTask.getDeadline());
+		} else {
+			assertNull(createdTask.getDeadline());
 		}
-		Task createdTask = tasks.stream()
-				.filter(task -> task.getTitle().equals("Task  deadline"))
-				.findFirst()
-				.orElse(null);
-		assertNotNull(createdTask);
-		assertEquals(LocalDate.of(2026, 10, 16), createdTask.getDeadline());
 	}
 
 	// и такая же проверка приоритета поля
 	@Test
 	void create_PrioritizeFormFieldDeadlineOverMacro() throws Exception {
-		String title = "Task !before 15.02.2024 deadline";
+		String title = "Task !before 16.10.2025 deadline";
 		String requestBody = objectMapper.writeValueAsString(
 				Map.of("title", title,
 						"description", "Valid Description",
@@ -461,75 +352,16 @@ class ApiTests {
 						"deadline", "2026-10-16")
 		);
 
-		mockMvc.perform(MockMvcRequestBuilders.post("/api/tasks")
+		MvcResult result = mockMvc.perform(MockMvcRequestBuilders.post("/api/tasks")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody))
-				.andExpect(MockMvcResultMatchers.status().isCreated());
+				.andExpect(MockMvcResultMatchers.status().isCreated())
+				.andReturn();
 
-		List<Task> tasks = taskRepository.findAll();
-		System.out.println("Tasks in database: ");
-		for (Task task : tasks) {
-			System.out.println("  Title: " + task.getTitle() + ", Priority: " + task.getPriority()  + ", Status: " + task.getStatus()  + ", Deadline: " + task.getDeadline()  + ", Description: " + task.getDescription());
-		}
-		Task createdTask = tasks.stream()
-				.filter(task -> task.getTitle().equals("Task  deadline"))
-				.findFirst()
-				.orElse(null);
+		String responseBody = result.getResponse().getContentAsString();
+		Task createdTask = objectMapper.readValue(responseBody, Task.class);
 		assertNotNull(createdTask);
 		assertEquals(LocalDate.of(2026, 10, 16), createdTask.getDeadline());
-	}
-
-	//неправильные значения приоритета
-	@Test
-	void create_PriorityFromMacroInvalid() throws Exception {
-		String title = "Task with !5 priority";
-		String requestBody = objectMapper.writeValueAsString(
-				Map.of("title", title,
-						"description", "Valid Description",
-						"status", "ACTIVE")
-		);
-
-		mockMvc.perform(MockMvcRequestBuilders.post("/api/tasks")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestBody))
-				.andExpect(MockMvcResultMatchers.status().isCreated());
-
-		List<Task> tasks = taskRepository.findAll();
-		System.out.println("Tasks in database: ");
-		for (Task task : tasks) {
-			System.out.println("  Title: " + task.getTitle() + ", Priority: " + task.getPriority()  + ", Status: " + task.getStatus()  + ", Deadline: " + task.getDeadline()  + ", Description: " + task.getDescription());
-		}
-		Task createdTask = tasks.stream()
-				.filter(task -> task.getTitle().equals("Task with !5 priority"))
-				.findFirst()
-				.orElse(null);
-		assertNotNull(createdTask);
-	}
-
-	@Test
-	void create_DeadlineFromMacroInvalid() throws Exception {
-		String title = "Task !before 15/02/2024 deadline";
-		String requestBody = objectMapper.writeValueAsString(
-				Map.of("title", title,
-						"description", "Valid Description",
-						"status", "ACTIVE")
-		);
-
-		mockMvc.perform(MockMvcRequestBuilders.post("/api/tasks")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestBody))
-				.andExpect(MockMvcResultMatchers.status().isCreated());
-
-		List<Task> tasks = taskRepository.findAll();
-		System.out.println("Tasks in database: ");
-		for (Task task : tasks) {
-			System.out.println("  Title: " + task.getTitle() + ", Priority: " + task.getPriority()  + ", Status: " + task.getStatus()  + ", Deadline: " + task.getDeadline()  + ", Description: " + task.getDescription());
-		}
-		Task createdTask = tasks.stream()
-				.filter(task -> task.getTitle().equals("Task !before 15/02/2024 deadline"))
-				.findFirst()
-				.orElse(null);
-		assertNotNull(createdTask);
 	}
 
 	//и оставшиеся функции
@@ -611,9 +443,9 @@ class ApiTests {
 				.andExpect(jsonPath("$.message").value("Задача не найдена"));
 
 	}
+
 	@Test
 	void update_TaskWithShortTitle() throws Exception {
-		// Arrange: Create a task and save it
 		Task task = new Task();
 		task.setTitle("Initial Title");
 		task.setDescription("Initial Description");
@@ -660,4 +492,94 @@ class ApiTests {
 						.param("id", nonExistingId.toString()))
 				.andExpect(status().isNotFound());
 	}
+
+    //проверки сортировки, по имени и приоритету, что выдаст 1м
+    @Test
+    void getAll_DefaultSorting() throws Exception {
+        Task task1 = new Task();
+        task1.setTitle("Task B");
+        task1.setDescription("Description");
+        task1.setStatus(Status.ACTIVE);
+        task1.setCreatedAt(LocalDateTime.now().minusDays(2));
+        taskRepository.save(task1);
+
+        Task task2 = new Task();
+        task2.setTitle("Task A");
+        task2.setDescription("Description");
+        task2.setStatus(Status.ACTIVE);
+        task2.setCreatedAt(LocalDateTime.now().minusDays(1));
+        taskRepository.save(task2);
+
+        MvcResult result = mockMvc.perform(get("/api/tasks"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andReturn();
+
+        String responseBody = result.getResponse().getContentAsString();
+        Task[] tasks = objectMapper.readValue(responseBody, Task[].class);
+
+        assertEquals(2, tasks.length);
+        assertEquals("Task B", tasks[0].getTitle());
+        assertEquals("Task A", tasks[1].getTitle());
+    }
+
+    @Test
+    void getAll_SortByTitleAsc() throws Exception {
+        Task task1 = new Task();
+        task1.setTitle("Task B");
+        task1.setDescription("Description");
+        task1.setStatus(Status.ACTIVE);
+        taskRepository.save(task1);
+
+        Task task2 = new Task();
+        task2.setTitle("Task A");
+        task2.setDescription("Description");
+        task2.setStatus(Status.ACTIVE);
+        taskRepository.save(task2);
+
+        MvcResult result = mockMvc.perform(get("/api/tasks")
+                        .param("sortBy", "title")
+                        .param("sortDirection", "ASC"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andReturn();
+
+        String responseBody = result.getResponse().getContentAsString();
+        Task[] tasks = objectMapper.readValue(responseBody, Task[].class);
+
+        assertEquals(2, tasks.length);
+        assertEquals("Task A", tasks[0].getTitle());
+        assertEquals("Task B", tasks[1].getTitle());
+    }
+
+    @Test
+    void getAll_SortByPriorityDesc() throws Exception {
+        Task task1 = new Task();
+        task1.setTitle("Task A");
+        task1.setDescription("Description");
+        task1.setStatus(Status.ACTIVE);
+        task1.setPriority(Priority.HIGH);
+        taskRepository.save(task1);
+
+        Task task2 = new Task();
+        task2.setTitle("Task B");
+        task2.setDescription("Description");
+        task2.setStatus(Status.ACTIVE);
+        task2.setPriority(Priority.LOW);
+        taskRepository.save(task2);
+
+        MvcResult result = mockMvc.perform(get("/api/tasks")
+                        .param("sortBy", "priority")
+                        .param("sortDirection", "DESC"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andReturn();
+
+        String responseBody = result.getResponse().getContentAsString();
+        Task[] tasks = objectMapper.readValue(responseBody, Task[].class);
+
+        assertEquals(2, tasks.length);
+        assertEquals(Priority.LOW, tasks[0].getPriority());
+        assertEquals(Priority.HIGH, tasks[1].getPriority());
+    }
 }
